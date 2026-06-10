@@ -1,0 +1,11 @@
+"sport","team","fade_score","signals","opponents","report_prices","never_bet"
+"MLB","Atlanta Braves",-80,"square_fade","Chicago White Sox","-150",TRUE
+"MLB","Baltimore Orioles",-100,"book_needs_fade","Seattle Mariners","-100",TRUE
+"MLB","Boston Red Sox",-100,"book_needs_fade","","-120",TRUE
+"MLB","Chicago Cubs",-80,"square_fade","Colorado Rockies","-155",TRUE
+"MLB","Chicago White Sox",-100,"book_needs_fade","Atlanta Braves","125",TRUE
+"MLB","Cleveland Guardians",-100,"book_needs_fade","New York Yankees","115",TRUE
+"MLB","Colorado Rockies",-100,"book_needs_fade","Chicago Cubs","125",TRUE
+"MLB","New York Yankees",-80,"square_fade","Cleveland Guardians","-135",TRUE
+"MLB","San Diego Padres",-100,"book_needs_fade","","105",TRUE
+"MLB","Seattle Mariners",-80,"square_fade","Baltimore Orioles","-120",TRUE

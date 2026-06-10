@@ -1,13 +1,11 @@
 on:
- # schedule:
-#    - cron: '0 10 * * *'
-#    - cron: '55 14 * * *'
-#    - cron: '0 16 * * *'
-#    - cron: '0 18 * * *'
-#    - cron: '0 20 * * *'
+  workflow_dispatch:
+  schedule:
+    - cron: '0 14 * * *'
+    - cron: '0 18 * * *'
 
 jobs:
-  import-data:
+  spoorkbook-fade:
     runs-on: ubuntu-latest
     steps:
       - name: Set up R
@@ -19,18 +17,14 @@ jobs:
           packages: |
             any::httr
             any::jsonlite
-            any::xml2
             any::tidyr
             any::dplyr
             any::gt
             any::readr
-            any::gtExtras
             any::lubridate
             any::webshot2
-            any::png
             any::stringr
             any::gsheet
-
 
       - name: Check out repository
         uses: actions/checkout@v3
@@ -40,13 +34,10 @@ jobs:
         env:
           SPOORKBOOK_SHEET_URL: ${{ secrets.SPOORKBOOK_SHEET_URL }}
 
-      - name: Import data
-        run: Rscript -e 'source("mlb_ml_values.R")'
-
       - name: Commit results
         run: |
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
-          git add MLB_ML_Plays.png MLB_Plus_EV_Picks.csv Spoorkbook_Fade_Index.csv Spoorkbook_Dual_Fade_Games.csv
-          git commit -m 'Data updated' || echo "No changes to commit"
+          git add Spoorkbook_Fade_Index.csv Spoorkbook_Dual_Fade_Games.csv
+          git commit -m 'Spoorkbook fade data updated' || echo "No changes to commit"
           git push origin || echo "No changes to commit"
