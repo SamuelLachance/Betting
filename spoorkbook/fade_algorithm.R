@@ -139,7 +139,7 @@ score_fade_plays <- function(report_df, odds_df = NULL) {
       report_prices = paste(na.omit(report_price), collapse = " / "),
       .groups = "drop"
     ) %>%
-    mutate(is_fade = fade_score <= SIGNAL_WEIGHTS$single_sided_fade)
+    mutate(is_fade = fade_score <= SIGNAL_WEIGHTS$square_fade)
 
   game_signals <- report_df %>%
     filter(!is.na(book_needs_team), book_needs_team != "") %>%
@@ -190,26 +190,7 @@ score_fade_plays <- function(report_df, odds_df = NULL) {
     ) %>%
     ungroup()
 
-  if (!is.null(odds_df) && nrow(odds_df) > 0) {
-    recommendations <- recommendations %>%
-      left_join(
-        odds_df %>%
-          select(home_team, away_team, dk_price_home, dk_price_away, fd_price_home, fd_price_away, start_time),
-        by = c("team_a" = "home_team", "team_b" = "away_team")
-      ) %>%
-      mutate(
-        fade_team_price_dk = case_when(
-          book_needs_fade_team == team_a ~ dk_price_home,
-          book_needs_fade_team == team_b ~ dk_price_away,
-          TRUE ~ NA_real_
-        ),
-        fade_team_price_fd = case_when(
-          book_needs_fade_team == team_a ~ fd_price_home,
-          book_needs_fade_team == team_b ~ fd_price_away,
-          TRUE ~ NA_real_
-        )
-      )
-  }
+  recommendations <- join_game_odds(recommendations, odds_df)
 
   list(
     fade_index = fade_index,
@@ -218,12 +199,70 @@ score_fade_plays <- function(report_df, odds_df = NULL) {
   )
 }
 
+get_faded_teams <- function(fade_result, teams_lookup = NULL) {
+  faded_full <- fade_result$fade_index$team[fade_result$fade_index$is_fade]
+
+  faded_short <- if (!is.null(teams_lookup)) {
+    teams_lookup$team_wo_city[teams_lookup$team_with_city %in% faded_full]
+  } else {
+    character()
+  }
+
+  list(full = unique(faded_full), short = unique(faded_short))
+}
+
 is_team_faded <- function(team, fade_result) {
   team %in% fade_result$fade_index$team[fade_result$fade_index$is_fade]
 }
 
-filter_non_fade_picks <- function(picks_df, fade_result) {
+filter_non_fade_picks <- function(picks_df, fade_result, team_col = "bet") {
   faded_teams <- fade_result$fade_index$team[fade_result$fade_index$is_fade]
   picks_df %>%
-    filter(!bet %in% faded_teams)
+    filter(!.data[[team_col]] %in% faded_teams)
+}
+
+join_game_odds <- function(recommendations, odds_df) {
+  if (is.null(odds_df) || nrow(odds_df) == 0) {
+    return(recommendations)
+  }
+
+  odds_direct <- odds_df %>%
+    transmute(
+      team_a = home_team,
+      team_b = away_team,
+      dk_price_home,
+      dk_price_away,
+      fd_price_home,
+      fd_price_away,
+      start_time
+    )
+
+  odds_flipped <- odds_df %>%
+    transmute(
+      team_a = away_team,
+      team_b = home_team,
+      dk_price_home = dk_price_away,
+      dk_price_away = dk_price_home,
+      fd_price_home = fd_price_away,
+      fd_price_away = fd_price_home,
+      start_time
+    )
+
+  odds_bidirectional <- bind_rows(odds_direct, odds_flipped) %>%
+    distinct(team_a, team_b, .keep_all = TRUE)
+
+  recommendations %>%
+    left_join(odds_bidirectional, by = c("team_a", "team_b")) %>%
+    mutate(
+      fade_team_price_dk = case_when(
+        book_needs_fade_team == team_a ~ dk_price_home,
+        book_needs_fade_team == team_b ~ dk_price_away,
+        TRUE ~ NA_real_
+      ),
+      fade_team_price_fd = case_when(
+        book_needs_fade_team == team_a ~ fd_price_home,
+        book_needs_fade_team == team_b ~ fd_price_away,
+        TRUE ~ NA_real_
+      )
+    )
 }

@@ -11,24 +11,7 @@ library(stringr)
 library(readr)
 
 source("spoorkbook/fade_algorithm.R")
-
-read_fade_report <- function() {
-  report_path <- "spoorkbook/sample_report.csv"
-  fade_csv <- "Spoorkbook_Fade_Plays.csv"
-  if (file.exists(fade_csv)) {
-    fade_teams <- read.csv(fade_csv, stringsAsFactors = FALSE)$fade_target
-    return(list(fade_teams = unique(fade_teams), fade_result = NULL))
-  }
-  if (file.exists(report_path)) {
-    report <- read.csv(report_path, stringsAsFactors = FALSE)
-    fade_result <- score_fade_plays(report)
-    return(list(
-      fade_teams = fade_result$fade_index$team[fade_result$fade_index$is_fade],
-      fade_result = fade_result
-    ))
-  }
-  list(fade_teams = character(), fade_result = NULL)
-}
+source("spoorkbook/report_reader.R")
 
 api <- "d72d888a7e2831439aa64a8ac1525f71"
 base <- "https://api.the-odds-api.com"
@@ -256,7 +239,7 @@ bp_game_df_adjusted <- bp_game_df %>%
   mutate(away_team = team_with_city.y) %>%
   select(c(1, 2, 3, 4, 5, 6, 7))
 
-fade_data <- read_fade_report()
+fade_data <- load_fade_result()
 faded_teams_full <- fade_data$fade_teams
 faded_teams_short <- teams$team_wo_city[teams$team_with_city %in% faded_teams_full]
 

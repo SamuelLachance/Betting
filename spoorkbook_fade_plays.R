@@ -2,35 +2,12 @@ library(httr)
 library(jsonlite)
 library(tidyr)
 library(dplyr)
-library(gt)
-library(webshot2)
 library(lubridate)
 library(stringr)
 library(readr)
-library(gsheet)
 
 source("spoorkbook/fade_algorithm.R")
-
-# --- Report source: set your Spoorkbook Google Sheet URL here ---
-# Expected columns: sport, book_needs_team, book_needs_price, book_needs_opponent,
-#                   square_team, square_price, square_opponent
-SPOORKBOOK_SHEET_URL <- Sys.getenv(
-  "SPOORKBOOK_SHEET_URL",
-  unset = ""
-)
-
-read_spoorkbook_report <- function() {
-  if (SPOORKBOOK_SHEET_URL != "") {
-    message("Reading Spoorkbook report from Google Sheet...")
-    return(read.csv(
-      text = gsheet2text(SPOORKBOOK_SHEET_URL, format = "csv"),
-      stringsAsFactors = FALSE
-    ))
-  }
-
-  message("Using local sample report: spoorkbook/sample_report.csv")
-  read.csv("spoorkbook/sample_report.csv", stringsAsFactors = FALSE)
-}
+source("spoorkbook/report_reader.R")
 
 american_to_probability <- function(american_odds) {
   ifelse(is.na(american_odds), NA,
@@ -113,59 +90,72 @@ output_df <- recs %>%
     confidence
   )
 
+fade_index_df <- fade_result$fade_index %>%
+  filter(is_fade) %>%
+  transmute(
+    sport,
+    team,
+    fade_score,
+    signals,
+    opponents,
+    report_prices,
+    never_bet = TRUE
+  )
+
 if (nrow(output_df) == 0) {
   stop("No fade plays found in Spoorkbook report.")
 }
 
 write.csv(output_df, "Spoorkbook_Fade_Plays.csv", row.names = FALSE)
+write.csv(fade_index_df, "Spoorkbook_Fade_Index.csv", row.names = FALSE)
 
 if (requireNamespace("gt", quietly = TRUE) && requireNamespace("webshot2", quietly = TRUE)) {
   fade_table <- output_df %>%
-  gt() %>%
-  tab_header(
-    title = md("**Spoorkbook Fade Plays**"),
-    subtitle = md("BOOK NEEDS + SQUARE TOP POSITION — teams listed are **fades**, not plays")
-  ) %>%
-  cols_label(
-    sport = "Sport",
-    game = "Game",
-    start_time = "Time",
-    fade_target = "Fade Team",
-    fade_price_report = "Report Line",
-    fade_price_dk = "DK Line",
-    square_fade = "Square Fade",
-    play_type = "Type",
-    recommendation = "Signal",
-    action = "Action",
-    confidence = "Conf."
-  ) %>%
-  fmt_number(columns = c(fade_price_report, fade_price_dk), decimals = 0, force_sign = TRUE) %>%
-  tab_style(
-    style = cell_fill(color = "#ffcccc"),
-    locations = cells_body(columns = fade_target)
-  ) %>%
-  tab_style(
-    style = cell_fill(color = "#ffe6cc"),
-    locations = cells_body(columns = play_type, rows = play_type == "FADE ONLY")
-  ) %>%
-  tab_style(
-    style = cell_fill(color = "#e6e6e6"),
-    locations = cells_body(columns = play_type, rows = play_type == "NO PLAY")
-  ) %>%
-  tab_style(
-    style = cell_text(weight = "bold"),
-    locations = cells_column_labels()
-  ) %>%
-  tab_source_note(
-    source_note = md(
-      paste0(
-        "Rules: (1) Teams in **BOOK NEEDS** = fade, never bet them. ",
-        "(2) Teams in **SQUARE TOP POSITION** = fade. ",
-        "(3) Solo book-needs fade (e.g. Boston) = **FADE ONLY**, no auto-play on opponent. ",
-        "(4) Both sides faded = skip the game."
+    gt() %>%
+    tab_header(
+      title = md("**Spoorkbook Fade Plays**"),
+      subtitle = md("BOOK NEEDS + SQUARE TOP POSITION — teams listed are **fades**, not plays")
+    ) %>%
+    cols_label(
+      sport = "Sport",
+      game = "Game",
+      start_time = "Time",
+      fade_target = "Fade Team",
+      fade_price_report = "Report Line",
+      fade_price_dk = "DK Line",
+      square_fade = "Square Fade",
+      play_type = "Type",
+      recommendation = "Signal",
+      action = "Action",
+      confidence = "Conf."
+    ) %>%
+    fmt_number(columns = c(fade_price_report, fade_price_dk), decimals = 0, force_sign = TRUE) %>%
+    tab_style(
+      style = cell_fill(color = "#ffcccc"),
+      locations = cells_body(columns = fade_target)
+    ) %>%
+    tab_style(
+      style = cell_fill(color = "#ffe6cc"),
+      locations = cells_body(columns = play_type, rows = play_type == "FADE ONLY")
+    ) %>%
+    tab_style(
+      style = cell_fill(color = "#e6e6e6"),
+      locations = cells_body(columns = play_type, rows = play_type == "NO PLAY")
+    ) %>%
+    tab_style(
+      style = cell_text(weight = "bold"),
+      locations = cells_column_labels()
+    ) %>%
+    tab_source_note(
+      source_note = md(
+        paste0(
+          "Rules: (1) Teams in **BOOK NEEDS** = fade, never bet them. ",
+          "(2) Teams in **SQUARE TOP POSITION** = fade. ",
+          "(3) Solo book-needs fade (e.g. Boston) = **FADE ONLY**, no auto-play on opponent. ",
+          "(4) Both sides faded = skip the game."
+        )
       )
     )
-  )
 
   gtsave(fade_table, filename = "Spoorkbook_Fade_Plays.png", expand = 100, vheight = 120, vwidth = 1400)
   message("Generated Spoorkbook_Fade_Plays.png")
@@ -173,9 +163,8 @@ if (requireNamespace("gt", quietly = TRUE) && requireNamespace("webshot2", quiet
   message("gt/webshot2 not available — skipped PNG output (CSV written).")
 }
 
-# Also write a plain CSV for downstream scripts / bots
-message("Generated Spoorkbook_Fade_Plays.csv")
+message("Generated Spoorkbook_Fade_Plays.csv and Spoorkbook_Fade_Index.csv")
 message("Fade targets (NEVER bet these teams):")
-for (team in fade_result$fade_index$team[fade_result$fade_index$is_fade]) {
-  message("  - ", team)
+for (team in fade_index_df$team) {
+  message("  - ", team, " (", fade_index_df$signals[fade_index_df$team == team][1], ")")
 }
