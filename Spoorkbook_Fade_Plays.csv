@@ -1,7 +1,0 @@
-"sport","game","start_time","fade_target","fade_price_report","fade_price_dk","square_fade","play_type","recommendation","action","confidence"
-"MLB","Colorado Rockies vs Chicago Cubs","—","Colorado Rockies",125,NA,"Chicago Cubs","NO PLAY","NONE — both sides faded","Skip ML: fade Colorado Rockies + Chicago Cubs","HIGH"
-"MLB","Baltimore Orioles vs Seattle Mariners","—","Baltimore Orioles",-100,NA,"Seattle Mariners","NO PLAY","NONE — both sides faded","Skip ML: fade Baltimore Orioles + Seattle Mariners","HIGH"
-"MLB","Cleveland Guardians vs New York Yankees","—","Cleveland Guardians",115,NA,"New York Yankees","NO PLAY","NONE — both sides faded","Skip ML: fade Cleveland Guardians + New York Yankees","HIGH"
-"MLB","Chicago White Sox vs Atlanta Braves","—","Chicago White Sox",125,NA,"Atlanta Braves","NO PLAY","NONE — both sides faded","Skip ML: fade Chicago White Sox + Atlanta Braves","HIGH"
-"MLB","San Diego Padres (solo fade)","—","San Diego Padres",105,NA,NA,"FADE ONLY","FADE San Diego Padres — do NOT bet this team","Avoid San Diego Padres. No automatic play on opponent.","HIGH"
-"MLB","Boston Red Sox (solo fade)","—","Boston Red Sox",-120,NA,NA,"FADE ONLY","FADE Boston Red Sox — do NOT bet this team","Avoid Boston Red Sox. No automatic play on opponent.","HIGH"

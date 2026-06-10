@@ -12,6 +12,7 @@ library(readr)
 
 source("spoorkbook/fade_algorithm.R")
 source("spoorkbook/report_reader.R")
+source("spoorkbook/scoring_engine.R")
 
 api <- "d72d888a7e2831439aa64a8ac1525f71"
 base <- "https://api.the-odds-api.com"
@@ -240,68 +241,93 @@ bp_game_df_adjusted <- bp_game_df %>%
   select(c(1, 2, 3, 4, 5, 6, 7))
 
 fade_data <- load_fade_result()
-faded_teams_full <- fade_data$fade_teams
-faded_teams_short <- teams$team_wo_city[teams$team_with_city %in% faded_teams_full]
 
-final_df <- bp_game_df_adjusted %>%
-  left_join(., prices_h2h, by = join_by(home_team, away_team)) %>%
-  mutate(home_value_dk = ifelse(home_team == bet, home_prob - dk_prob, NA),
-         home_value_fd = ifelse(home_team == bet, home_prob - fd_prob, NA),
-         away_value_dk = ifelse(away_team == bet, away_prob - dk_prob, NA),
-         away_value_fd = ifelse(away_team == bet, away_prob - fd_prob, NA),
-         home_value_flag_dk = ifelse(home_value_dk > .05, 1, 0),
-         home_value_flag_fd = ifelse(home_value_fd > .05, 1, 0),
-         away_value_flag_dk = ifelse(away_value_dk > .05, 1, 0),
-         away_value_flag_fd = ifelse(away_value_fd > .05, 1, 0),
-         any_value_flag = ifelse(home_value_flag_dk == 1 | away_value_flag_dk == 1 | home_value_flag_fd == 1 | away_value_flag_fd == 1, 1, 0)) %>%
-  filter(any_value_flag == 1) %>%
-  filter(!bet %in% faded_teams_full) %>%
-  left_join(., teams, by = c("home_team" = "team_with_city")) %>%
-  mutate(home_team = team_wo_city) %>%
-  left_join(., teams, by = c("away_team" = "team_with_city")) %>%
-  mutate(away_team = team_wo_city.y) %>%
-  select(-c(team_wo_city.x, team_wo_city.y)) %>%
-  left_join(., teams, by = c("bet" = "team_with_city")) %>%
-  mutate(bet = team_wo_city) %>%
-  select(-c(team_wo_city)) %>%
-  filter(!bet %in% faded_teams_short) %>%
-  mutate(game = paste0(away_team, " @ ", home_team),
-         dk_value = ifelse(bet == home_team, home_value_dk, away_value_dk),
-         fd_value = ifelse(bet == home_team, home_value_fd, away_value_fd),
-         #test = ifelse(home_team == bet, pmax(home_value_dk, home_value_fd, na.rm = FALSE), 0))
-         bet_prob = ifelse(home_team == bet, home_prob, away_prob)) %>%
-  select(c(game, start_time, bet, bet_prob, dk_price, dk_value, fd_price, fd_value)) %>%
+sides_df <- prepare_game_sides(bp_game_df_adjusted, prices_h2h)
+plus_ev_picks <- score_plus_ev_picks(sides_df, fade_data$fade_result)
+
+if (nrow(plus_ev_picks) == 0) {
+  message("No +EV picks today after Spoorkbook fade filters.")
+}
+
+display_picks <- plus_ev_picks %>%
+  left_join(teams, by = c("away_team" = "team_with_city")) %>%
+  rename(away_short = team_wo_city) %>%
+  left_join(teams, by = c("home_team" = "team_with_city")) %>%
+  rename(home_short = team_wo_city) %>%
+  left_join(teams, by = c("team" = "team_with_city")) %>%
+  rename(pick_short = team_wo_city) %>%
+  transmute(
+    game = paste0(away_short, " @ ", home_short),
+    start_time,
+    bet = pick_short,
+    bet_prob = model_prob,
+    book = best_book,
+    price = best_price,
+    edge = best_edge,
+    ev = best_ev,
+    confidence
+  )
+
+if (nrow(display_picks) == 0) {
+  display_picks <- data.frame(
+    game = "No +EV plays today",
+    start_time = "—",
+    bet = "—",
+    bet_prob = NA_real_,
+    book = "—",
+    price = NA_real_,
+    edge = NA_real_,
+    ev = NA_real_,
+    confidence = "—",
+    stringsAsFactors = FALSE
+  )
+}
+
+write.csv(display_picks, "MLB_Plus_EV_Picks.csv", row.names = FALSE)
+
+final_df <- display_picks %>%
+  select(game, start_time, bet, bet_prob, book, price, edge, ev, confidence) %>%
   gt() %>%
-  tab_spanner(label = "Pick", columns = c(bet, bet_prob)) %>%
-  tab_spanner(label = "DraftKings", columns = c(dk_price, dk_value)) %>%
-  tab_spanner(label = "FanDuel", columns = c(fd_price, fd_value)) %>%
-  cols_label(game ~ "Game",
-             bet ~ "Side",
-             bet_prob ~ "Win %",
-             dk_price ~ "Price",
-             fd_price ~ "Price",
-             dk_value ~ "Value",
-             fd_value ~ "Value",
-             start_time ~ "Time") %>%
-  fmt_number(columns = c(dk_price, fd_price),
-             force_sign = TRUE,
-             decimals = 0) %>%
-  fmt_percent(columns = c(bet_prob, dk_value, fd_value),
-              decimals = 0) %>%
-  data_color(columns = bet_prob,
-             fn = scales::col_numeric(palette = c("red", "white", "green"), domain = c(0, 1)),
-             apply_to = "fill") %>%
+  tab_spanner(label = "Pick", columns = c(bet, bet_prob, confidence)) %>%
+  tab_spanner(label = "Best Book", columns = c(book, price)) %>%
+  tab_spanner(label = "+EV", columns = c(edge, ev)) %>%
+  cols_label(
+    game = "Game",
+    bet = "Side",
+    bet_prob = "Model %",
+    book = "Book",
+    price = "Price",
+    edge = "Edge",
+    ev = "EV",
+    confidence = "Conf.",
+    start_time = "Time"
+  ) %>%
+  fmt_number(columns = price, force_sign = TRUE, decimals = 0) %>%
+  fmt_percent(columns = c(bet_prob, edge), decimals = 1) %>%
+  fmt_number(columns = ev, decimals = 3) %>%
+  data_color(
+    columns = ev,
+    fn = scales::col_numeric(palette = c("white", "green"), domain = c(0, 0.15)),
+    apply_to = "fill"
+  ) %>%
   cols_align(columns = c(game, start_time), align = "left") %>%
-  cols_align(columns = c(bet, dk_price, dk_value, fd_price, fd_value), align = "center") %>%
-  tab_style(style = cell_borders(sides = "right"),
-            locations = cells_body(columns = 2)) %>%
-  tab_style(style = cell_text(weight = "bold"),
-            locations = cells_column_spanners()) %>%
+  cols_align(columns = c(bet, book, price, edge, ev, confidence), align = "center") %>%
+  tab_style(style = cell_borders(sides = "right"), locations = cells_body(columns = 2)) %>%
+  tab_style(style = cell_text(weight = "bold"), locations = cells_column_spanners()) %>%
   tab_header(
-    title = md("**Ballpark Pal Moneyline Values**")) %>%
-  tab_source_note(source_note = "Data obtained from ballparkpal.com")
+    title = md("**MLB +EV Plays**"),
+    subtitle = md("Only positive expected value picks surviving Spoorkbook fade filters")
+  ) %>%
+  tab_source_note(
+    source_note = md(
+      paste0(
+        "Min edge: ", SCORING_CONFIG$min_edge * 100, "% | ",
+        "Faded teams blocked | Dual-fade games skipped | Model: ballparkpal.com"
+      )
+    )
+  )
 
 gtsave(final_df, expand = 100,
        filename = "MLB_ML_Plays.png",
-       #path = file.path(paste0("H:/My Drive/R_playground/mlbvalues/")),
-       vheight = 100, vwidth =1000)
+       vheight = max(100, 40 * max(nrow(display_picks), 1) + 80),
+       vwidth = 1100)
